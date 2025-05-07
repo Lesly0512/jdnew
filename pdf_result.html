@@ -3,84 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <title>評分結果｜個人報告</title>
+  <style>
+    body { font-family: "Noto Sans TC", sans-serif; padding: 2rem; line-height: 1.6; }
+    #downloadPdfBtn { margin-top: 1rem; padding: .5rem 1rem; }
+  </style>
 </head>
 <body>
   <h2>📊 評分結果</h2>
+  <button id="downloadPdfBtn">下載評分結果 PDF</button>
+
   <div id="basicInfo"></div>
   <div id="fitSummary" style="margin-top:1rem;"></div>
   <canvas id="radarChart" width="500" height="500" style="max-width:100%;margin-top:1rem;"></canvas>
 
-  
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.9.2/dist/html2pdf.bundle.min.js"></script>
+
 <script>
-const index = new URLSearchParams(window.location.search).get("feedback");
+/* ===== 讀取 localStorage ===== */
+const idx = new URLSearchParams(location.search).get("feedback");
 const feedbacks = JSON.parse(localStorage.getItem("feedbacks") || "[]");
-const fb = feedbacks[index];
+const fb = feedbacks[idx];
 
+/* ===== 匯出 PDF ===== */
+document.getElementById("downloadPdfBtn").addEventListener("click", () => {
+  const fname = fb ? `評分結果_${fb.name}.pdf` : "評分結果.pdf";
+  html2pdf().from(document.body).set({ filename: fname, html2canvas: { scale: 2 } }).save();
+});
+
+/* ===== 資訊顯示 ===== */
 if (!fb) {
-  document.getElementById("basicInfo").innerHTML = "<p>找不到評分資料。</p>";
+  document.body.insertAdjacentHTML("beforeend", "<p>❌ 找不到評分資料</p>");
 } else {
-  // basic info
+  /* 基本資料 */
   document.getElementById("basicInfo").innerHTML = `
-      <p>👤 被評人：${fb.name}</p>
-      <p>📌 職位名稱：${fb.role}</p>
-      <p>🕒 提交時間：${new Date(fb.submittedAt).toLocaleString("zh-TW")}</p>
+    <p>👤 被評人：${fb.name}</p>
+    <p>📌 職位名稱：${fb.role}</p>
+    <p>🕒 提交時間：${new Date(+fb.submittedAt).toLocaleString("zh-TW")}</p>
   `;
 
-  // fit summary
-  let total = parseFloat(fb.scoreTotal);
-  let level = fb.scoreLevel;
-  let explanation = fb.scoreExplanation;
-
-  // fallback if explanation undefined
-  if (!explanation) {
-    if (total >= 4.5) explanation = "完全符合職位條件，具備全面勝任潛力。";
-    else if (total >= 3.5) explanation = "大部分符合職位要求，具備勝任基礎且潛力良好。";
-    else if (total >= 2.5) explanation = "部分符合硬指標，某些軟實力需培養，能勝任但需時間適應與學習。";
-    else if (total >= 1.5) explanation = "與需求有落差，需大量培訓與指導才能勉強勝任。";
-    else explanation = "背景與能力皆不符，難以勝任該職位，培養成本過高。";
+  /* 適配度說明（若缺值則即時計算） */
+  let explain = fb.scoreExplanation;
+  const total = +fb.scoreTotal;
+  if (!explain) {
+    explain = total >= 4.5 ? "完全符合職位條件，具備全面勝任潛力。"
+      : total >= 3.5 ? "大部分符合職位要求，具備勝任基礎且潛力良好。"
+      : total >= 2.5 ? "部分符合硬指標，需時間適應與學習。"
+      : total >= 1.5 ? "與需求有落差，需大量培訓與指導才能勉強勝任。"
+      : "背景與能力皆不符，難以勝任該職位。";
   }
-
   document.getElementById("fitSummary").innerHTML = `
-      <h3>🔎 適配度分析</h3>
-      <p><strong>總分：</strong>${total.toFixed(2)} / 5</p>
-      <p><strong>匹配程度：</strong>${level}</p>
-      <p>${explanation}</p>
+    <h3>🔎 適配度分析</h3>
+    <p><strong>總分：</strong>${total.toFixed(2)} / 5</p>
+    <p><strong>匹配程度：</strong>${fb.scoreLevel}</p>
+    <p>${explain}</p>
   `;
 
-  // dynamic radar chart
-  const role = JSON.parse(localStorage.getItem("roles") || "[]").find(r => r.role === fb.role);
-  const labels = [
-    "學歷",
-    "經歷",
-    "技能",
-    ...role.soft.map(s => s.title),
-    ...role.trait.map(t => t.title)
-  ];
-  const data = fb.scores;
+  /* 雷達圖 */
+  const roles = JSON.parse(localStorage.getItem("roles") || "[]");
+  const roleObj = roles.find(r => r.role === fb.role) || {};
+  const labels = [];
 
-  const ctx = document.getElementById("radarChart").getContext("2d");
-  new Chart(ctx, {
+  (roleObj.hard ? Object.values(roleObj.hard) : []).forEach(i => labels.push(i.title || "硬指標"));
+  (roleObj.soft || []).forEach(i => labels.push(i.title));
+  (roleObj.trait || []).forEach(i => labels.push(i.title));
+
+  new Chart(document.getElementById("radarChart"), {
     type: "radar",
     data: {
-      labels: labels,
+      labels,
       datasets: [{
         label: "得分",
-        data: data,
+        data: fb.scores,
         fill: true,
-        borderColor: "rgba(54, 162, 235, 1)",
-        backgroundColor: "rgba(54, 162, 235, 0.2)",
-        pointBackgroundColor: "rgba(54, 162, 235, 1)"
+        borderColor: "rgba(54,162,235,1)",
+        backgroundColor: "rgba(54,162,235,0.2)",
+        pointBackgroundColor: "rgba(54,162,235,1)"
       }]
     },
-    options: {
-      scales: {
-        r: { suggestedMin: 0, suggestedMax: 5, ticks: { stepSize: 1 } }
-      }
-    }
+    options: { scales: { r: { suggestedMin: 0, suggestedMax: 5, ticks: { stepSize: 1 } } } }
   });
 }
 </script>
-
 </body>
 </html>
