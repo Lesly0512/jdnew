@@ -5,125 +5,102 @@
   <title>關鍵崗位畫像評分</title>
   <style>
     body { font-family: "Noto Sans TC", sans-serif; padding: 2rem; line-height: 1.6; }
-    h2 { margin-bottom: 0.5rem; }
-    .section-block { border: 1px solid #ccc; padding: 1rem; margin-top: 1rem; background: #fafafa; }
-    label { font-weight: bold; display: block; margin-top: 1rem; }
-    select, input[type="text"] { width: 100%; padding: 0.5rem; }
-    .rating-group { margin-top: 0.5rem; }
-    .rating-group label { margin-right: 1rem; }
-    .submit-btn { margin-top: 2rem; padding: 0.5rem 1rem; }
+    h2 { margin-bottom: .5rem; }
+    .section { border: 1px solid #ccc; padding: 1rem; margin-top: 1rem; background:#fafafa; }
+    .rating label { margin-right:1rem; display:inline-block; }
+    .submit-btn { margin-top:2rem; padding:.5rem 1rem; }
   </style>
 </head>
 <body>
-
   <h2>📝 關鍵崗位畫像評分</h2>
   <div id="jobInfo"></div>
 
   <label for="personName">被評人姓名</label>
-  <input type="text" id="personName" required />
+  <input id="personName" type="text" required style="width:100%;padding:.5rem;" />
 
   <form id="scoreForm">
-<div id="ratingArea"></div>
-    <button class="submit-btn" type="submit">提交評分</button>
+    <div id="ratingArea"></div>
+    <button type="submit" class="submit-btn">提交評分</button>
   </form>
-<script>
-const roleIndex = new URLSearchParams(window.location.search).get("index");
-const roles = JSON.parse(localStorage.getItem("roles") || "[]");
-const role = roles[roleIndex];
 
-function renderIndicators(role) {
-  const container = document.getElementById("ratingArea");
-  container.innerHTML = "";
-  const sections = [
-    { title: "學歷", item: role.hard.edu },
-    { title: "經歷", item: role.hard.exp },
-    { title: "專業技能", item: role.hard.skill },
-    ...role.soft.map(s => ({ title: s.title, item: s })),
-    ...role.trait.map(t => ({ title: t.title, item: t }))
-  ];
-  sections.forEach((sec, idx) => {
-    const block = document.createElement("div");
-    block.className = "section-block";
-    block.innerHTML = \`
-      <h4>\${sec.title}</h4>
-      <p>\${sec.item.desc}</p>
-      <div class="rating-group">
-      \${sec.item.scores.map((desc, i) => \`
-        <label>
-          <input type="radio" name="score\${idx}" value="\${5 - i}" required /> \${5 - i}
-          <span style="margin-left:4px;">\${desc}</span>
-        </label><br/>\`).join("")}
-      </div>
-    \`;
-    container.appendChild(block);
-  });
-}
+<script>
+/* ===== 抓取職位資料 ===== */
+const idx = new URLSearchParams(location.search).get("index");
+const roles = JSON.parse(localStorage.getItem("roles") || "[]");
+const role = roles[idx];
 
 if (!role) {
-  document.getElementById("jobInfo").innerHTML = "<p>查無職位資料。</p>";
-  document.getElementById("scoreForm").style.display = "none";
+  document.body.insertAdjacentHTML("beforeend","<p>❌ 找不到職位資料</p>");
+  document.getElementById("scoreForm").style.display="none";
 } else {
-  document.getElementById("jobInfo").innerHTML = \`
-    <h3>\${role.role}</h3>
-    <p>\${role.description}</p>
-  \`;
+  document.getElementById("jobInfo").innerHTML = `<h3>${role.role}</h3><p>${role.description||""}</p>`;
   renderIndicators(role);
 }
 
-// handle form submit
-document.getElementById("scoreForm").addEventListener("submit", function(e){
-  e.preventDefault();
-  const name = document.getElementById("personName").value.trim();
-  if (!name) { alert("請輸入被評人姓名"); return; }
+/* ===== 動態產生指標 ===== */
+function renderIndicators(role){
+  const wrap=document.getElementById("ratingArea");
+  wrap.innerHTML="";
 
-  const form = new FormData(this);
-  const scores = [];
-  for (let val of form.values()) { scores.push(parseInt(val, 10)); }
+  const sections=[];
+  if(role.hard) Object.values(role.hard).forEach(i=>sections.push(i));
+  (role.soft || []).forEach(i=>sections.push(i));
+  (role.trait || []).forEach(i=>sections.push(i));
 
-  const weights = { hard: 0.4, soft: 0.3, trait: 0.3 };
-  const hardAvg = (scores.slice(0,3).reduce((a,b)=>a+b,0))/3;
-  const softCount = role.soft.length;
-  const softAvg = softCount ? (scores.slice(3,3+softCount).reduce((a,b)=>a+b,0))/softCount : 0;
-  const traitStart = 3+softCount;
-  const traitCount = role.trait.length;
-  const traitAvg = traitCount ? (scores.slice(traitStart, traitStart+traitCount).reduce((a,b)=>a+b,0))/traitCount : 0;
-
-  const total = hardAvg*weights.hard + softAvg*weights.soft + traitAvg*weights.trait;
-
-  let level = "";
-  let explanation = "";
-  if (total >= 4.5) {
-      level = "高度匹配";
-      explanation = "完全符合職位條件，具備全面勝任潛力。";
-  } else if (total >= 3.5) {
-      level = "良好匹配";
-      explanation = "大部分符合職位要求，具備勝任基礎且潛力良好。";
-  } else if (total >= 2.5) {
-      level = "部分匹配";
-      explanation = "部分符合硬指標，某些軟實力需培養，能勝任但需時間適應與學習。";
-  } else if (total >= 1.5) {
-      level = "低度匹配";
-      explanation = "與需求有落差，需大量培訓與指導才能勉強勝任。";
-  } else {
-      level = "完全不匹配";
-      explanation = "背景與能力皆不符，難以勝任該職位，培養成本過高。";
-  }
-
-  const feedbacks = JSON.parse(localStorage.getItem("feedbacks") || "[]");
-  feedbacks.push({
-      name,
-      role: role.role,
-      scores,
-      scoreTotal: total.toFixed(2),
-      scoreLevel: level,
-      scoreExplanation: explanation,
-      submittedAt: Date.now()
+  sections.forEach((sec, i)=>{
+    const div=document.createElement("div");
+    div.className="section";
+    div.innerHTML=`
+      <h4>${sec.title || "指標"}</h4>
+      <p>${sec.desc || ""}</p>
+      <div class="rating">
+        ${sec.scores.map((d, k)=>`
+          <label>
+            <input type="radio" name="score${i}" value="${5-k}" required> ${5-k}－${d}
+          </label>
+        `).join("<br>")}
+      </div>`;
+    wrap.appendChild(div);
   });
-  localStorage.setItem("feedbacks", JSON.stringify(feedbacks));
-  alert("✅ 評分完成，資料已儲存！");
-  location.href = "pdf_result.html?feedback=" + (feedbacks.length - 1);
-});
-</script>
+}
 
+/* ===== 表單提交 ===== */
+document.getElementById("scoreForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const name=document.getElementById("personName").value.trim();
+  if(!name){alert("請輸入被評人姓名");return;}
+
+  const radios=[...document.querySelectorAll('input[type="radio"]:checked')];
+  const scores=radios.map(r=>+r.value);
+
+  /* === 分數加權 === */
+  const hardCnt=role.hard?Object.keys(role.hard).length:0,
+        softCnt=(role.soft||[]).length,
+        traitCnt=(role.trait||[]).length;
+
+  const hardAvg = hardCnt ? avg(scores.slice(0,hardCnt)) : 0;
+  const softAvg = softCnt ? avg(scores.slice(hardCnt,hardCnt+softCnt)) : 0;
+  const traitAvg= traitCnt ? avg(scores.slice(hardCnt+softCnt)) : 0;
+
+  const total=hardAvg*0.4+softAvg*0.3+traitAvg*0.3;
+
+  let level, explain;
+  if(total>=4.5){level="高度匹配";explain="完全符合職位條件，具備全面勝任潛力。";}
+  else if(total>=3.5){level="良好匹配";explain="大部分符合職位要求，具備勝任基礎且潛力良好。";}
+  else if(total>=2.5){level="部分匹配";explain="部分符合硬指標，需時間適應與學習。";}
+  else if(total>=1.5){level="低度匹配";explain="與需求有落差，需大量培訓與指導才能勉強勝任。";}
+  else {level="完全不匹配";explain="背景與能力皆不符，難以勝任該職位。";}
+
+  /* === 儲存 feedback === */
+  const fb=JSON.parse(localStorage.getItem("feedbacks")||"[]");
+  fb.push({name,role:role.role,scores,scoreTotal:total.toFixed(2),scoreLevel:level,scoreExplanation:explain,submittedAt:Date.now()});
+  localStorage.setItem("feedbacks",JSON.stringify(fb));
+
+  alert("✅ 評分完成，資料已儲存！");
+  location.href=`pdf_result.html?feedback=${fb.length-1}`;
+});
+
+function avg(arr){return arr.reduce((a,b)=>a+b,0)/arr.length;}
+</script>
 </body>
 </html>
