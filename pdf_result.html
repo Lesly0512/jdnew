@@ -1,134 +1,79 @@
 <!DOCTYPE html>
-
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8"/>
-<title>評分結果｜個人報告</title>
+  <meta charset="UTF-8" />
+  <title>評分結果｜個人報告</title>
+  
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-    body { font-family: "Noto Sans TC", sans-serif; padding: 2rem; line-height: 1.6; }
-    h2 { margin-bottom: 1rem; }
-    .summary { margin-top: 2rem; padding: 1rem; background: #f9f9f9; border: 1px solid #ccc; }
-    canvas { max-width: 500px; margin-top: 1rem; }
-  </style>
-</head>
-<body>
-<h2>📊 評分結果報告</h2>
-<div id="basicInfo"></div>
-<div>
-<canvas id="radarChart"></canvas>
-</div>
-<div class="summary" id="fitSummary">
-<p id="match-score"></p>
-<p id="match-level"></p>
-<p id="match-description"></p>
-</div>
-<button onclick="window.print()" style="margin-top: 2rem; padding: 0.5rem 1rem;">📥 匯出報告</button>
 <script>
-  const index = new URLSearchParams(window.location.search).get("feedback");
-  const feedbacks = JSON.parse(localStorage.getItem("feedbacks") || "[]");
-  const fb = feedbacks[index];
+const index = new URLSearchParams(window.location.search).get("feedback");
+const feedbacks = JSON.parse(localStorage.getItem("feedbacks") || "[]");
+const fb = feedbacks[index];
 
-  if (!fb) {
-    document.getElementById("basicInfo").innerHTML = "<p>找不到評分資料。</p>";
-  } else {
-    document.getElementById("basicInfo").innerHTML = `
+if (!fb) {
+  document.getElementById("basicInfo").innerHTML = "<p>找不到評分資料。</p>";
+} else {
+  // basic info
+  document.getElementById("basicInfo").innerHTML = `
       <p>👤 被評人：${fb.name}</p>
       <p>📌 職位名稱：${fb.role}</p>
       <p>🕒 提交時間：${new Date(fb.submittedAt).toLocaleString("zh-TW")}</p>
-    `;
+  `;
 
-    const total = parseFloat(fb.scoreTotal);
-    let level = fb.scoreLevel;
-    let explanation = fb.scoreExplanation;
+  // fit summary
+  let total = parseFloat(fb.scoreTotal);
+  let level = fb.scoreLevel;
+  let explanation = fb.scoreExplanation;
 
-    document.getElementById("fitSummary").innerHTML = `
+  // fallback if explanation undefined
+  if (!explanation) {
+    if (total >= 4.5) explanation = "完全符合職位條件，具備全面勝任潛力。";
+    else if (total >= 3.5) explanation = "大部分符合職位要求，具備勝任基礎且潛力良好。";
+    else if (total >= 2.5) explanation = "部分符合硬指標，某些軟實力需培養，能勝任但需時間適應與學習。";
+    else if (total >= 1.5) explanation = "與需求有落差，需大量培訓與指導才能勉強勝任。";
+    else explanation = "背景與能力皆不符，難以勝任該職位，培養成本過高。";
+  }
+
+  document.getElementById("fitSummary").innerHTML = `
       <h3>🔎 適配度分析</h3>
-      <p><strong>總分：</strong>${total.toFixed(2)} 分</p>
+      <p><strong>總分：</strong>${total.toFixed(2)} / 5</p>
       <p><strong>匹配程度：</strong>${level}</p>
       <p>${explanation}</p>
-    `;
+  `;
 
-    // 設定雷達圖資料
-    const totalLen = fb.scores.length;
-    const countHard = 3;
-    const role = JSON.parse(localStorage.getItem("roles"))?.find(r => r.role === fb.role);
-    const countSoft = role?.soft?.length || 0;
-    const countTrait = role?.trait?.length || 0;
+  // dynamic radar chart
+  const role = JSON.parse(localStorage.getItem("roles") || "[]").find(r => r.role === fb.role);
+  const labels = [
+    "學歷",
+    "經歷",
+    "技能",
+    ...role.soft.map(s => s.title),
+    ...role.trait.map(t => t.title)
+  ];
+  const data = fb.scores;
 
-    const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
-    const hardAvg = avg(fb.scores.slice(0, 3));
-    const softAvg = avg(fb.scores.slice(3, 3 + countSoft));
-    const traitAvg = avg(fb.scores.slice(3 + countSoft, 3 + countSoft + countTrait));
-
-    new Chart(document.getElementById("radarChart"), {
-      type: "radar",
-      data: {
-        labels: ["硬指標", "軟實力", "人格特質"],
-        datasets: [{
-          label: "平均分數",
-          data: [hardAvg, softAvg, traitAvg],
-          fill: true,
-          borderColor: "rgba(54, 162, 235, 1)",
-          backgroundColor: "rgba(54, 162, 235, 0.2)",
-          pointBackgroundColor: "rgba(54, 162, 235, 1)",
-          pointBorderColor: "#fff",
-          pointHoverBackgroundColor: "#fff",
-          pointHoverBorderColor: "rgba(54, 162, 235, 1)",
-          tension: 0.3
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-        },
-        scales: {
-          r: {
-            suggestedMin: 0,
-            suggestedMax: 5,
-            ticks: {
-              stepSize: 1,
-              backdropColor: "transparent"
-            },
-            grid: {
-              color: "#ccc"
-            },
-            pointLabels: {
-              font: { size: 14 }
-            }
-          }
-        }
+  const ctx = document.getElementById("radarChart").getContext("2d");
+  new Chart(ctx, {
+    type: "radar",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "得分",
+        data: data,
+        fill: true,
+        borderColor: "rgba(54, 162, 235, 1)",
+        backgroundColor: "rgba(54, 162, 235, 0.2)",
+        pointBackgroundColor: "rgba(54, 162, 235, 1)"
+      }]
+    },
+    options: {
+      scales: {
+        r: { suggestedMin: 0, suggestedMax: 5, ticks: { stepSize: 1 } }
       }
-    });
-  }
+    }
+  });
+}
 </script>
-<hr/><p style="text-align: center; font-size: 12px; color: gray;">🚀 本頁版本：v20250507 ｜ Generated on 2025/05/07</p><script>
-document.addEventListener("DOMContentLoaded", function () {
-  const score = parseFloat(localStorage.getItem("finalScore")) || 0;
-  let matchLevel = "";
-  let matchDescription = "";
 
-  if (score >= 4.5) {
-    matchLevel = "高度匹配";
-    matchDescription = "完全符合職位條件，具備全面勝任潛力。";
-  } else if (score >= 3.5) {
-    matchLevel = "良好匹配";
-    matchDescription = "多數條件符合，可勝任多數職責，潛力佳。";
-  } else if (score >= 2.5) {
-    matchLevel = "部分匹配";
-    matchDescription = "部分條件尚可，但需補足部分能力與經驗。";
-  } else if (score >= 1.5) {
-    matchLevel = "低度匹配";
-    matchDescription = "多數條件不符，建議進行培訓或調整配置。";
-  } else {
-    matchLevel = "完全不匹配";
-    matchDescription = "缺乏關鍵條件，建議重新評估職位適配性。";
-  }
-
-  document.getElementById("match-score").textContent = "總分：" + score.toFixed(2);
-  document.getElementById("match-level").textContent = "匹配程度：" + matchLevel;
-  document.getElementById("match-description").textContent = matchDescription;
-});
-</script></body>
+</body>
 </html>
