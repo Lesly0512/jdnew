@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>關鍵崗位畫像評分</title>
+  <style>
+    body { font-family: "Noto Sans TC", sans-serif; padding: 2rem; line-height: 1.6; }
+    h2 { margin-bottom: 0.5rem; }
+    .section-block { border: 1px solid #ccc; padding: 1rem; margin-top: 1rem; background: #fafafa; }
+    label { font-weight: bold; display: block; margin-top: 1rem; }
+    select, input[type="text"] { width: 100%; padding: 0.5rem; }
+    .rating-group { margin-top: 0.5rem; }
+    .rating-group label { margin-right: 1rem; }
+    .submit-btn { margin-top: 2rem; padding: 0.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <h2>📝 關鍵崗位畫像評分</h2>
+  <div id="jobInfo"></div>
+
+  <label for="personName">被評人姓名</label>
+  <input type="text" id="personName" required />
+
+  <form id="scoreForm">
+<div id="ratingArea"></div>
+<div id="ratingArea"></div>
+    <div id="ratingSections"></div>
+    <button class="submit-btn" type="submit">提交評分</button>
+  </form>
+<script>
+  const roleIndex = new URLSearchParams(window.location.search).get("index");
+  const roles = JSON.parse(localStorage.getItem("roles") || "[]");
+  const role = roles[roleIndex];
+
+  if (!role) {
+    document.getElementById("jobInfo").innerHTML = "<p>查無職位資料。</p>";
+    document.getElementById("scoreForm").style.display = "none";
+  } else {
+    document.getElementById("jobInfo").innerHTML = `
+      <h3>${role.role}</h3>
+      <p>${role.description}</p>
+    `;
+
+    const container = document.getElementById("ratingSections");
+
+    const buildBlock = (title, desc, prefix) => {
+      let html = `<div class="section-block"><h4>${title}</h4><p>${desc}</p><div class="rating-group">`;
+      for (let i = 5; i >= 1; i--) {
+        html += `
+          <label>
+            <input type="radio" name="${prefix}" value="${i}" required /> ${i}
+          </label>
+        `;
+      }
+      html += "</div></div>";
+      return html;
+    };
+
+    // 硬指標
+    container.innerHTML += buildBlock("🎓 學歷", role.hard.edu.desc, "edu");
+    container.innerHTML += buildBlock("📂 經歷", role.hard.exp.desc, "exp");
+    container.innerHTML += buildBlock("🛠️ 專業技能", role.hard.skill.desc, "skill");
+
+    // 軟實力
+    role.soft.forEach((s, i) => {
+      container.innerHTML += buildBlock(`🌟 軟實力｜${s.title}`, s.desc, `soft${i}`);
+    });
+
+    // 人格特質
+    role.trait.forEach((s, i) => {
+      container.innerHTML += buildBlock(`💡 人格特質｜${s.title}`, s.desc, `trait${i}`);
+    });
+  }
+
+  document.getElementById("scoreForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    const name = document.getElementById("personName").value.trim();
+    if (!name) return alert("請輸入被評人姓名");
+
+    const form = new FormData(this);
+    const allScores = [];
+    const weights = { hard: 0.4, soft: 0.3, trait: 0.3 };
+    let sumHard = 0, sumSoft = 0, sumTrait = 0;
+    let countHard = 3, countSoft = role.soft.length, countTrait = role.trait.length;
+
+    const scoreObj = {};
+    for (let [key, val] of form.entries()) {
+      const num = parseInt(val, 10);
+      scoreObj[key] = num;
+      allScores.push(num);
+      if (key.startsWith("edu") || key.startsWith("exp") || key.startsWith("skill")) sumHard += num;
+      else if (key.startsWith("soft")) sumSoft += num;
+      else if (key.startsWith("trait")) sumTrait += num;
+    }
+
+    const avgHard = sumHard / countHard;
+    const avgSoft = countSoft ? sumSoft / countSoft : 0;
+    const avgTrait = countTrait ? sumTrait / countTrait : 0;
+    const totalScore = (
+      avgHard * weights.hard +
+      avgSoft * weights.soft +
+      avgTrait * weights.trait
+    );
+
+    let level = "", explanation = "";
+    if (totalScore >= 4.5) {
+      level = "高度匹配";
+      explanation = "完全符合硬指標要求，並在關鍵軟實力上表現卓越，能立即勝任該職位並為企業帶來價值。";
+    } else if (totalScore >= 3.5) {
+      level = "良好匹配";
+      explanation = "大致符合硬指標要求，在軟實力方面展現強大能力，仍能較快適應崗位。";
+    } else if (totalScore >= 2.5) {
+      level = "部分匹配";
+      explanation = "部分符合硬指標，某些軟實力需培養，能勝任但需時間適應與學習。";
+    } else if (totalScore >= 1.5) {
+      level = "低度匹配";
+      explanation = "與需求有落差，需大量培訓與指導才能勉強勝任。";
+    } else {
+      level = "完全不匹配";
+      explanation = "背景與能力皆不符，難以勝任該職位，培養成本過高。";
+    }
+
+    const feedbacks = JSON.parse(localStorage.getItem("feedbacks") || "[]");
+    feedbacks.push({
+      name,
+      role: role.role,
+      scores: allScores,
+      scoreTotal: totalScore.toFixed(2),
+      scoreLevel: level,
+      scoreExplanation: explanation,
+      submittedAt: Date.now()
+    });
+    localStorage.setItem("feedbacks", JSON.stringify(feedbacks));
+    alert("✅ 評分完成，資料已儲存！");
+    location.href = "pdf_result.html?feedback=" + (feedbacks.length - 1);
+  });
+
+function renderIndicators(role) {
+  const container = document.getElementById("ratingArea");
+  container.innerHTML = "";
+
+  const sections = [
+    { title: "學歷", item: role.hard.edu },
+    { title: "經歷", item: role.hard.exp },
+    { title: "專業技能", item: role.hard.skill },
+    ...role.soft.map(s => ({ title: s.title, item: s })),
+    ...role.trait.map(t => ({ title: t.title, item: t }))
+  ];
+
+  sections.forEach((sec, i) => {
+    const block = document.createElement("div");
+    block.innerHTML = `
+      <h4>${sec.title}</h4>
+      <p>${sec.item.desc}</p>
+      ${sec.item.scores.map((desc, idx) => `
+        <label>
+          <input type="radio" name="score${i}" value="${5 - idx}" required />
+          ${desc}
+        </label><br/>
+      `).join("")}
+      <hr/>
+    `;
+    container.appendChild(block);
+  });
+}
+
+</script>
+</body>
+</html>
